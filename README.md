@@ -4,4 +4,4 @@
 
 На основании библиотек `leaflet` и `rmarkdown` создан шаблон интерактивной карты  
 
-![](http://g.recordit.co/XxS9hdcVWQ.gif)
+![](map-part.gif)
