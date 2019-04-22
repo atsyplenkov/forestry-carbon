@@ -1,0 +1,174 @@
+---
+title: "Общий запас углерода в биомассе лесов"
+output: 
+  flexdashboard::flex_dashboard
+---
+
+<style>
+.navbar-inverse {
+  background-color: #3E3F3A;
+  border-color: #1967be;
+}
+.navbar-inverse .navbar-nav > li > a:hover,
+.navbar-inverse .navbar-nav > li > a:focus {
+  color: #ffffff;
+  background-color: #B6B4AF;
+}
+.navbar-inverse .navbar-nav > .active > a,
+.navbar-inverse .navbar-nav > .active > a:hover,
+.navbar-inverse .navbar-nav > .active > a:focus {
+  color: #ffffff;
+  background-color: #7B7971;
+}
+</style>
+
+---
+
+```{r Setup, include=FALSE}
+# Загрузка необходимых библиотек
+library(flexdashboard)
+library(rgdal)
+library(leaflet)
+library(dplyr)
+library(htmlwidgets)
+
+# Настройка кириллицы
+Sys.setlocale("LC_ALL", "Russian_Russia")
+
+# 1) Загрузка данных ----------------------------------------------------------
+# Чтение полигонов лесничеств
+les <- readOGR("data", "1_Lesnich_ZapasC",
+               encoding = "UTF-8",
+               use_iconv = TRUE)
+ # Расчет общего запаса углерода
+les$vse <- les$Z_All / les$S_lesn
+
+# Чтение полигонов особо охраняемых природных территорий (ООПТ)
+oopt <- readOGR("data", "1_Lesnich_ZapasC_OOPT",
+                encoding = "UTF-8", use_iconv = TRUE) 
+
+# Чтение границ РФ
+border <- readOGR("data", "gos_granica", encoding = "UTF-8", use_iconv = TRUE)
+
+# 2) Редактирование шейпов ----------------------------------------------------
+# Пересчет отрицательных координат, „объединение двух частей Чукотки“
+# https://habr.com/ru/post/201012/
+for(i in 1:length(les@polygons)){
+  for(j in 1:length(les@polygons[[i]]@Polygons)){
+    les@polygons[[i]]@Polygons[[j]]@coords[,1]<- sapply(les@polygons[[i]]@Polygons[[j]]@coords[,1], function(x){
+      if(x < 0){
+        x<-359.999+x
+      }
+      else{x}
+    })
+  }
+}
+
+# 3) Настройка дополнительных объектов интерактивной карты --------------------
+# Установка цветовой палитры
+palette <- colorBin(c('#f2f2beff',
+                      '#aff1b1ff',
+                      '#41b7c5ff',
+                      '#2d7fb9ff',
+                      '#253394ff'), 
+                    bins = c(3.67, 50, 75, 100, 150, 250))
+
+# Настройка всплывающих окон для лесничеств
+popup1 <- paste("<span style='color: salmon;'><strong>Название лесничества: </strong></span>",
+                 les$NAZV, 
+                 "<br><span style='color: salmon;'><strong>Комментарий: </strong></span>", 
+                 les$COMMENTS
+                 ,"<br><span style='color: salmon;'><strong>Субъект РФ: </strong></span>", 
+                 les$SUBECT_1   
+                 ,"<br><span style='color: salmon;'><strong>Лесной район: </strong></span>", 
+                 les$LRN
+                 ,"<br><span style='color: salmon;'><strong>Запас углерода в биомассе лесов, тС: </strong></span>", 
+                 prettyNum(round(les$Z_All), big.mark = " ")
+                 ,"<br><span style='color: salmon;'><strong>Площадь лесных земель, га: </strong></span>", 
+                 prettyNum(round(les$S_lesn), big.mark = " ")
+)
+
+# Настройка всплывающих окон для ООПТ
+popup2 <- paste0("<span style='color: salmon;'><strong>Название ООПТ: </strong></span>", 
+                 oopt$NAZV
+)
+
+```
+
+```{r, echo=FALSE}
+# 4) Создание интерактивной карты leaflet
+mymap <- leaflet() %>% 
+  # Добавление положки
+  addProviderTiles("Esri.WorldStreetMap",
+                   options = tileOptions(minZoom = 1, maxZoom = 14)) %>%
+  # Установка начального масштаба
+  setView(99,64, 3) %>%
+  # Добавление полигонов лесничеств
+  addPolygons(data = les, # указание пространственного объекта
+              fillColor = ~palette(les$vse), # цветовая палитра
+              fillOpacity = 0.8,        # прозрачность
+              color = "darkgrey",       # цвет границ
+              weight = 2,              # толщина границ
+              popup = popup1,         # всплывающее окно
+              highlightOptions = highlightOptions(color = "white", # подсветка
+                                                  weight = 2,
+                                                  bringToFront = TRUE),
+              group="Labels") %>% # группа в легенде
+  # Добавление полигонов ООПТ
+  addPolygons(data = oopt, 
+              fillColor = "yellow",
+              fillOpacity = 0.8,         
+              color = "darkgrey",       
+              weight = 1.5,           
+              popup = popup2,          
+              highlightOptions = highlightOptions(color = "white",
+                                                  weight = 2,
+                                                  bringToFront = TRUE),
+              group = "Basemap") %>%
+  # Добавление государственных границ
+  addPolylines(data = border, 
+               color = "black",       
+               weight = 2) %>%
+  # Добавление легенды
+  addLegend(position = 'bottomleft', 
+            colors = c('#f2f2beff',
+                       '#aff1b1ff',
+                       '#41b7c5ff',
+                       '#2d7fb9ff',
+                       '#253394ff',
+                       'white',
+                       'yellow',
+                       'dimgrey'), 
+            labels = c('3,67 - 50,0',"50,1 - 75,0","75,1 - 100,0","100,1 - 150,0","150,1 - 250,0",
+                       "","ООПТ, нет данных", "Нелесные земли, нет данных"),  
+            opacity = 0.6,     
+            title = "Общий запас углерода в биомассе лесов,  тС/га")
+
+# 5) Дополнительные объекты карты leaflet
+# Базовые карты (подложки) ESRI
+esri <- grep("^Esri", providers, value = TRUE)
+for (provider in esri) {
+  mymap <- mymap %>% addProviderTiles(provider, group = provider)
+}
+
+# Нанесение подложек ESRI на карту
+mymap <- mymap %>%
+  # Добавление тумблера переключения
+  addLayersControl(baseGroups = names(esri),
+                   options = layersControlOptions(collapsed = T)) %>%
+  # Добавление миникарты
+  addMiniMap(tiles = esri[[1]],
+             toggleDisplay = TRUE,
+             position = "bottomright") %>%
+  htmlwidgets::onRender("
+    function(el, x) {
+      var myMap = this;
+      myMap.on('baselayerchange',
+        function (e) {
+          myMap.minimap.changeLayer(L.tileLayer.provider(e.name));
+        })
+    }") 
+
+mymap
+
+```
