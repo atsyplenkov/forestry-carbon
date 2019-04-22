@@ -5,4 +5,4 @@
 На основании библиотек `leaflet` и `rmarkdown` создан шаблон интерактивной карты  
 ![map part][map]
 
-[map]: http://g.recordit.co/XxS9hdcVWQ.gif "Фрагмент карты"
+[map]: https://g.recordit.co/XxS9hdcVWQ.gif "Фрагмент карты"
